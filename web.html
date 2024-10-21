@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat With Gemini</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.0/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #chat-container {
+            width: 95%;
+            max-width: 1200px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            display: flex;
+            transition: all 0.3s ease;
+        }
+
+        #chat-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+
+        #sidebar {
+            width: 30%;
+            padding-right: 20px;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        #main-chat {
+            width: 70%;
+            padding-left: 20px;
+        }
+
+        h2 {
+            color: #4a4a4a;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        #chat {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            background-color: #f8f8f8;
+            transition: all 0.3s ease;
+        }
+
+        #chat:hover {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="file"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        button {
+            background-color: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background-color: #5a6fd6;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 10px rgba(102, 126, 234, 0.2);
+        }
+
+        img {
+            max-width: 100%;
+            border-radius: 10px;
+            margin-top: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        #analytics-container {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        #analytics-container:hover {
+            background-color: #e8e8e8;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        #conversation-container {
+            margin-bottom: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+        }
+
+        #conversation-container div {
+            padding: 8px;
+            margin-bottom: 5px;
+            background-color: #ffffff;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #conversation-container div:hover {
+            background-color: #e0e0e0;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        #chat p {
+            animation: fadeIn 0.3s ease;
+        }
+
+        #message-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        #message-input input[type="text"] {
+            flex-grow: 1;
+        }
+
+        #message-input button {
+            flex-shrink: 0;
+        }
+
+        #file-upload {
+            display: none;
+        }
+
+        #file-upload-label {
+            cursor: pointer;
+            padding: 10px 15px;
+            background-color: #667eea;
+            color: white;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        #file-upload-label:hover {
+            background-color: #5a6fd6;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="chat-container">
+        <div id="sidebar">
+            <h2>Conversations</h2>
+            <div class="input-group">
+                <input id="username" type="text" placeholder="Enter your username">
+                <button onclick="loadConversations()">Load</button>
+            </div>
+            <div class="input-group">
+                <button onclick="createConversation()">New Conversation</button>
+                <button onclick="deleteConversation()">Delete Conversation</button>
+            </div>
+            <div id="conversation-container"></div>
+            <div id="title-container" style="display: none;">
+                <input id="newTitle" type="text" placeholder="Enter new title">
+                <button onclick="updateConversationTitle()">Change Title</button>
+            </div>
+        </div>
+        <div id="main-chat">
+            <h2>Chat With Gemini</h2>
+            <div id="chat"></div>
+            <div id="message-input">
+                <input type="file" id="file-upload" accept="image/*" onchange="uploadImage()">
+                <label for="file-upload" id="file-upload-label">📎</label>
+                <input id="message" type="text" placeholder="Enter your message">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+            <div id="analytics-container">
+                <h3>Overall Analytics</h3>
+                <button onclick="loadAnalytics()">Load Analytics</button>
+                <div id="analytics-display"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = new SockJS('https://chat-api-backend-x4dl.onrender.com/ws-chat');
+        let stompClient = Stomp.over(socket);
+        let username = '';
+        let currentConversationId = '';
+
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+
+            stompClient.subscribe('/topic/messages', function (messageOutput) {
+                console.log('Received message from server:', messageOutput.body);
+
+                let chatArea = document.getElementById('chat');
+                let messageElement = document.createElement('p');
+                messageElement.innerHTML = "<strong>GEMINI:</strong> " + messageOutput.body;
+                messageElement.style.color = 'blue';
+
+                chatArea.appendChild(messageElement);
+                chatArea.scrollTop = chatArea.scrollHeight;
+            });
+        });
+
+        async function sendMessage() {
+            let message = document.getElementById('message').value.trim();
+            if (!username || !message || !currentConversationId) {
+                alert("Please enter username, create a conversation, and enter a message.");
+                return;
+            }
+
+            try {
+                let loadingIndicator = document.createElement('p');
+                loadingIndicator.textContent = 'Sending...';
+                document.getElementById('chat').appendChild(loadingIndicator);
+
+                const response = await fetch(`https://chat-api-backend-x4dl.onrender.com/api/conversations/${currentConversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        message: message
+                    })
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const responseData = await response.json();
+
+                loadingIndicator.remove();
+
+                let chatArea = document.getElementById('chat');
+
+                let userMessageElement = document.createElement('p');
+                userMessageElement.innerHTML = "<strong>" + responseData.userMessage.sender + ":</strong> " + responseData.userMessage.content;
+                userMessageElement.style.color = 'green';
+                chatArea.appendChild(userMessageElement);
+
+                let aiMessageElement = document.createElement('p');
+                aiMessageElement.innerHTML = "<strong>" + responseData.aiMessage.sender + ":</strong> " + responseData.aiMessage.content;
+                aiMessageElement.style.color = 'blue';
+                chatArea.appendChild(aiMessageElement);
+
+                chatArea.scrollTop = chatArea.scrollHeight;
+
+                document.getElementById('message').value = '';
+
+                // Refresh conversation list to update title if it was the first message
+                loadConversations();
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Error sending message: ' + error.message);
+            }
+        }
+
+     async function loadConversations() {
+            username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert("Please enter a username.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://chat-api-backend-x4dl.onrender.com/api/conversations/by-username?username=${username}`);
+
+                if (response.status === 404) {
+                    // Nếu không có cuộc trò chuyện nào, hiển thị thông báo
+                    displayConversations([]);
+                } else if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                } else {
+                    const conversations = await response.json();
+                    displayConversations(conversations);
+                }
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+                alert('Error loading conversations: ' + error.message);
+            }
+        }
+
+        function displayConversations(conversations) {
+            const container = document.getElementById('conversation-container');
+            container.innerHTML = '';
+
+            if (conversations.length === 0) {
+                const noConversationsMessage = document.createElement('div');
+                noConversationsMessage.textContent = 'Chưa có cuộc trò chuyện';
+                noConversationsMessage.style.textAlign = 'center';
+                noConversationsMessage.style.padding = '10px';
+                noConversationsMessage.style.color = '#666';
+                container.appendChild(noConversationsMessage);
+            } else {
+                conversations.forEach(conversation => {
+                    const title = conversation.title || 'No Title';
+                    const div = document.createElement('div');
+                    div.innerHTML = `<strong>${title}</strong>`;
+
+                    div.addEventListener('click', () => {
+                        currentConversationId = conversation.id;
+                        displayMessages(conversation.messages);
+                        document.getElementById('title-container').style.display = 'block';
+                    });
+                    container.appendChild(div);
+                });
+            }
+        }
+
+
+        function displayConversations(conversations) {
+                const container = document.getElementById('conversation-container');
+                container.innerHTML = '';
+
+                if (conversations.length === 0) {
+                    const noConversationsMessage = document.createElement('div');
+                    noConversationsMessage.textContent = 'Chưa có cuộc trò chuyện';
+                    noConversationsMessage.style.textAlign = 'center';
+                    noConversationsMessage.style.padding = '10px';
+                    noConversationsMessage.style.color = '#666';
+                    container.appendChild(noConversationsMessage);
+                } else {
+                    conversations.forEach(conversation => {
+                        const title = conversation.title || 'No Title';
+                        const div = document.createElement('div');
+                        div.innerHTML = `<strong>${title}</strong>`;
+
+                        div.addEventListener('click', () => {
+                            currentConversationId = conversation.id;
+                            displayMessages(conversation.messages);
+                            document.getElementById('title-container').style.display = 'block';
+                        });
+                        container.appendChild(div);
+                    });
+                }
+            }
+
+        function displayMessages(messages) {
+            const chatArea = document.getElementById('chat');
+            chatArea.innerHTML = '';
+
+            messages.forEach(message => {
+                let messageElement = document.createElement('div');
+
+                if (message.contentType === 'image') {
+                    let imgElement = document.createElement('img');
+                    imgElement.src = `data:image/png;base64,${message.content}`;
+                    imgElement.style.maxWidth = '200px';
+                    imgElement.style.maxHeight = '200px';
+                    imgElement.onerror = function () {
+                        this.onerror = null;
+                        this.src = 'path/to/placeholder-image.jpg';
+                        console.error('Failed to load image:', message.content);
+                    };
+                    messageElement.appendChild(imgElement);
+                } else {
+                    messageElement.innerHTML = `<strong>${message.sender}:</strong> ${message.content}`;
+                }
+
+                chatArea.appendChild(messageElement);
+            });
+
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        async function createConversation() {
+            username = document.getElementById('username').value.trim();
+
+            if (!username) {
+                alert("Please enter a username.");
+                return;
+            }
+
+            try {
+                const response = await fetch('https://chat-api-backend-x4dl.onrender.com/api/conversations/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username: username, message: "" })
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+                const newConversation = await response.json();
+
+                currentConversationId = newConversation.id;
+                loadConversations();
+
+                alert("Conversation created successfully. Now enter the first message to set the title.");
+
+            } catch (error) {
+                console.error('Error creating conversation:', error);
+            }
+        }
+
+        async function deleteConversation() {
+            if (!currentConversationId) {
+                alert("Please select a conversation to delete.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://chat-api-backend-x4dl.onrender.com/api/conversations/${currentConversationId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to delete the conversation');
+                }
+
+                alert('Conversation deleted successfully.');
+                currentConversationId = '';
+                document.getElementById('chat').innerHTML = '';
+                document.getElementById('title-container').style.display = 'none';
+                loadConversations();
+
+            } catch (error) {
+                console.error('Error deleting conversation:', error);
+                alert('Error deleting conversation: ' + error.message);
+            }
+        }
+
+         function uploadImage() {
+                let fileInput = document.getElementById('file-upload');
+                let file = fileInput.files[0];
+
+                if (!file || !username || !currentConversationId) {
+                    alert("Please select an image, enter a username, and select a conversation.");
+                    return;
+                }
+
+                let formData = new FormData();
+                formData.append("file", file);
+                formData.append("username", username);
+                formData.append("conversationId", currentConversationId);
+
+                fetch('https://chat-api-backend-x4dl.onrender.com/api/images/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Server response:', data);
+
+                        let chatArea = document.getElementById('chat');
+
+                        let imageElement = document.createElement('img');
+                        imageElement.src = URL.createObjectURL(file);
+                        imageElement.style.maxWidth = '200px';
+                        imageElement.style.maxHeight = '200px';
+
+                        let messageElement = document.createElement('div');
+                        messageElement.appendChild(imageElement);
+
+                        let userText = document.createElement('p');
+                        userText.innerHTML = "<strong>" + username + ":</strong> [Uploaded an image]";
+                        userText.style.color = 'green';
+                        messageElement.appendChild(userText);
+
+                        let responseText = document.createElement('p');
+                        responseText.innerHTML = "<strong>GEMINI:</strong> " + (data.message || "Image processed successfully");
+                        responseText.style.color = 'blue';
+                        messageElement.appendChild(responseText);
+
+                        chatArea.appendChild(messageElement);
+                        chatArea.scrollTop = chatArea.scrollHeight;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error uploading image: ' + error.message);
+                    });
+            }
+        async function updateConversationTitle() {
+            if (!currentConversationId) {
+                alert("Please select a conversation first.");
+                return;
+            }
+
+            const newTitle = document.getElementById('newTitle').value.trim();
+            if (!newTitle) {
+                alert("Please enter a new title.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://chat-api-backend-x4dl.onrender.com/api/conversations/${currentConversationId}/title`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title: newTitle })
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                alert('Title updated successfully');
+                loadConversations();
+                document.getElementById('newTitle').value = '';
+            } catch (error) {
+                console.error('Error updating conversation title:', error);
+                alert('Error updating conversation title: ' + error.message);
+            }
+        }
+        function startHeartbeat() {
+            // Gửi heartbeat mỗi 10 giây
+            setInterval(() => {
+                if (stompClient.connected) {
+                    console.log('Sending heartbeat...');
+                    stompClient.send("/app/ping", {}, 'ping');
+                }
+            }, 10000); // 10 giây gửi một lần
+        }
+
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+
+            stompClient.subscribe('/topic/messages', function (messageOutput) {
+                console.log('Received message from server:', messageOutput.body);
+                // Xử lý hiển thị tin nhắn
+            });
+
+            stompClient.subscribe('/topic/pong', function () {
+                console.log('Heartbeat received from server');
+            });
+
+            // Bắt đầu gửi heartbeat
+            startHeartbeat();
+        });
+        async function loadAnalytics() {
+            try {
+                const response = await fetch('https://chat-api-backend-x4dl.onrender.com/api/conversations/analytics');
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const analytics = await response.json();
+                displayAnalytics(analytics);
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+                alert('Error loading analytics: ' + error.message);
+            }
+        }
+
+        function displayAnalytics(analytics) {
+            const container = document.getElementById('analytics-display');
+            container.innerHTML = `
+                        <p>Total Processed Questions: ${analytics.totalProcessedQuestions}</p>
+                        <p>Average Response Time: ${analytics.averageResponseTime.toFixed(2)} ms</p>
+                        <p>Total Unique Users: ${analytics.totalUniqueUsers}</p>
+                    `;
+        }
+
+    </script>
+</body>
+
+</html>
